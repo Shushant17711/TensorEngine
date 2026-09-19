@@ -66,6 +66,15 @@ buckets rather than one blanket rejection, each needing a different future exten
    right fix is a **`TreeSurrogate`** class (parallel to `MPSSurrogate`, contracting a TTN
    via `quimb`'s tree-tensor support instead of an MPS) — not yet implemented; a natural
    Week 4+ addition once the audit battery includes more QCNN-family models.
+   **Checked (2026-09-19) and worth recording so nobody re-checks it expecting a
+   shortcut**: `default.tensor` also has a `method="tn"` (general Tensor Network) mode
+   alongside `"mps"`, which sounded like it might give a TTN surrogate for free. It does
+   not — `"tn"` is for *exact* large-scale simulation via a smart contraction ordering
+   (`quimb`/`cotengra`), with no `max_bond_dim`-equivalent truncation knob (that kwarg is
+   documented as MPS-method-specific). A real `TreeSurrogate` needs bond-dimension-bounded
+   TTN contraction, which means building it directly against `quimb`'s tree-tensor-network
+   API rather than through `default.tensor`'s device abstraction — a bigger lift than
+   `MPSSurrogate` was, not a thin wrapper.
 3. **Genuinely tangled** (a cycle present AND degree ≥ 3 somewhere) — no relabeling or
    single-edge-cut analysis helps; would need an explicit mid-circuit SWAP network.
    Confirmed distinct from cases 1/2 with a dedicated test (a 4-cycle plus one chord,
