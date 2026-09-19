@@ -20,12 +20,22 @@ below, none of which have been run yet as of this commit.
 Chosen to intentionally span the outcome space (spec §4.3: don't pick a battery that's
 all one outcome), each with a stated prediction made *before* running anything:
 
-| # | Model | Source | Entangler shape (predicted from paper's circuit diagram, not yet traced through the parser) | Predicted outcome |
+| # | Model | Source | Entangler shape (predicted from the paper's own description, verified by fetching its text — not yet traced through our parser) | Predicted outcome |
 |---|---|---|---|---|
-| 3 | MPS-ansatz classifier | Grant et al., *Hierarchical quantum classifiers*, npj Quantum Information 4:65 (2018), arXiv:1804.03680 — the paper's own linear/MPS-shaped circuit variant | Linear chain (by construction — the paper explicitly designs this variant to mirror an MPS) | **Dequantizes easily**, confirmatory alongside model_01 |
-| 4 | Tree-ansatz classifier | Same paper (Grant et al. 2018) — the paper's own tree-shaped circuit variant | Binary tree | **Not applicable** (TTN shape), confirmatory alongside model_02 -- and a cleaner citation for it than a QCNN, since this paper explicitly frames its own circuit as tree-tensor-network-based |
+| 3 | MPS discriminative classifier | Huggins, Patil, Mitchell, Whaley, Stoudenmire, *Towards quantum machine learning with tensor networks*, Quantum Sci. Technol. 4, 024001 (2019), arXiv:1803.11537 — the paper's own MPS-circuit variant (full, non-qubit-efficient version) | Sequential chain: unitary₁ on (q1,q2) keeps one qubit forward as the "bond," unitary₂ on (bond,q3), ... through q_N — literally a linear chain by construction, and the paper explicitly parameterizes a bond dimension V analogous to our χ | **Dequantizes easily**, and specifically at **χ\* ≈ V** (the paper's own bond dimension) — a sharper, self-referential prediction than model_01's, since this circuit already *is* an MPS ansatz by construction |
+| 4 | Tree tensor network classifier | Same paper (Huggins et al. 2019) — the paper's own tree-circuit variant, 8 inputs → 3 layers (4+2+1 unitaries) merging equal-sized qubit pairs hierarchically | Binary tree (verified: pairs (1,2),(3,4),(5,6),(7,8) → 2 survivors merge → 1 final) | **Not applicable** (TTN shape), confirmatory alongside model_02 — same paper as model 3, so this is a clean within-paper MPS-vs-tree comparison, exactly this tool's central question |
 | 5 | Circuit-centric classifier | Schuld, Bocharov, Svore, Wiebe, *Circuit-centric quantum classifiers*, Phys. Rev. A 101, 032308 (2020), arXiv:1804.00633 | "Brick"-pattern layers of pairwise unitaries (offset nearest-neighbor blocks) — not yet traced; may turn out path-decomposable-after-reorder (like the model_01_vqc_chain synthetic case) or may not | **Uncertain** — this is deliberately the "don't already know the answer" model |
 | 6 | ZZ feature map classifier | Havlicek et al., *Supervised learning with quantum-enhanced feature spaces*, Nature 567:209 (2019), arXiv:1804.11326 | All-to-all `ZZFeatureMap`-style entangling layer (every qubit pair gets an entangling gate) | **Expected to resist** (genuinely non-path-decomposable — likely the "wheel"-type case from NOTES_WEEK3.md, needing a real SWAP network our matching layer doesn't build; may land as "not applicable" for a different reason than models 2/4: not a tree, but densely tangled) |
+
+**Correction note (before any of these were run):** an earlier draft of this document
+misattributed an "MPS-ansatz variant" to Grant et al. 2018 — verified by fetching that
+paper's actual text that it only describes TTN and MERA variants, no MPS one. Corrected to
+Huggins et al. 2019 (arXiv:1803.11537), which explicitly proposes both MPS and tree
+circuit variants in one paper (confirmed by fetching its text before writing the table
+above) — a better, cleaner citation for models 3/4 than the original mixed pairing. This
+correction was made before running any sweep against models 3-6, so it does not compromise
+the preregistration's anti-cherry-picking purpose; it is recorded here rather than silently
+edited so the correction itself is auditable.
 
 ## What "running the sweep" means for each (committed now, before any run)
 
