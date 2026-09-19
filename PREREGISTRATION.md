@@ -22,9 +22,9 @@ all one outcome), each with a stated prediction made *before* running anything:
 
 | # | Model | Source | Entangler shape (predicted from the paper's own description, verified by fetching its text — not yet traced through our parser) | Predicted outcome |
 |---|---|---|---|---|
-| 3 | MPS discriminative classifier | Huggins, Patil, Mitchell, Whaley, Stoudenmire, *Towards quantum machine learning with tensor networks*, Quantum Sci. Technol. 4, 024001 (2019), arXiv:1803.11537 — the paper's own MPS-circuit variant (full, non-qubit-efficient version) | Sequential chain: unitary₁ on (q1,q2) keeps one qubit forward as the "bond," unitary₂ on (bond,q3), ... through q_N — literally a linear chain by construction, and the paper explicitly parameterizes a bond dimension V analogous to our χ | **Dequantizes easily**, and specifically at **χ\* ≈ V** (the paper's own bond dimension) — a sharper, self-referential prediction than model_01's, since this circuit already *is* an MPS ansatz by construction |
+| 3 | MPS discriminative classifier | Huggins, Patil, Mitchell, Whaley, Stoudenmire, *Towards quantum machine learning with tensor networks*, Quantum Sci. Technol. 4, 024001 (2019), arXiv:1803.11537 — the paper's own MPS-circuit variant (full, non-qubit-efficient version) | Sequential chain: unitary₁ on (q1,q2) keeps one qubit forward as the "bond," unitary₂ on (bond,q3), ... through q_N — literally a linear chain by construction, and the paper explicitly parameterizes a bond dimension V (in *qubits* carried forward) analogous to our χ | **Dequantizes easily**, and specifically at **χ\* ≈ 2^V** (Schmidt rank of V qubits, not V itself — for the simplest V=1 implementation, this predicts χ\*≈2, directly comparable to model_01's χ\*=2) — a sharper, self-referential prediction than model_01's, since this circuit already *is* an MPS ansatz by construction |
 | 4 | Tree tensor network classifier | Same paper (Huggins et al. 2019) — the paper's own tree-circuit variant, 8 inputs → 3 layers (4+2+1 unitaries) merging equal-sized qubit pairs hierarchically | Binary tree (verified: pairs (1,2),(3,4),(5,6),(7,8) → 2 survivors merge → 1 final) | **Not applicable** (TTN shape), confirmatory alongside model_02 — same paper as model 3, so this is a clean within-paper MPS-vs-tree comparison, exactly this tool's central question |
-| 5 | Circuit-centric classifier | Schuld, Bocharov, Svore, Wiebe, *Circuit-centric quantum classifiers*, Phys. Rev. A 101, 032308 (2020), arXiv:1804.00633 | "Brick"-pattern layers of pairwise unitaries (offset nearest-neighbor blocks) — not yet traced; may turn out path-decomposable-after-reorder (like the model_01_vqc_chain synthetic case) or may not | **Uncertain** — this is deliberately the "don't already know the answer" model |
+| 5 | Circuit-centric classifier | Schuld, Bocharov, Svore, Wiebe, *Circuit-centric quantum classifiers*, Phys. Rev. A 101, 032308 (2020), arXiv:1804.00633 — implemented via `qml.StronglyEntanglingLayers`, which PennyLane's own docs confirm is "inspired by" this exact paper (verified, not assumed) | ~~"Brick"-pattern, not yet traced~~ **UPDATE (traced before any training, see model_05/reimplementation.py docstring):** entangler connects wire i to (i+r) mod M with r varying per layer — traced for 4-6 wires/2-3 layers and confirmed **not path-decomposable, not a ring, not a tree** (genuinely tangled: 3+ distinct partners on some wires, cycles present) | **Expected to resist** (revised from "uncertain" now that it's traced — same bucket as model 6, but for a structurally different reason: accumulated multi-range entanglement across layers, not one all-to-all round) |
 | 6 | ZZ feature map classifier | Havlicek et al., *Supervised learning with quantum-enhanced feature spaces*, Nature 567:209 (2019), arXiv:1804.11326 | All-to-all `ZZFeatureMap`-style entangling layer (every qubit pair gets an entangling gate) | **Expected to resist** (genuinely non-path-decomposable — likely the "wheel"-type case from NOTES_WEEK3.md, needing a real SWAP network our matching layer doesn't build; may land as "not applicable" for a different reason than models 2/4: not a tree, but densely tangled) |
 
 **Correction note (before any of these were run):** an earlier draft of this document
@@ -47,9 +47,19 @@ edited so the correction itself is auditable.
   whether `MPSSurrogate` can even be attempted — this is itself a result (a confirmed
   "not applicable" for models 4 and possibly 6 is a legitimate, informative outcome, not a
   failure to fix).
-- Where `MPSSurrogate` applies: χ ∈ {1,2,4,8}, 3 seeds, from-scratch training per χ, same
-  loss/optimizer/epoch budget as the reference model — the protocol tightened in
-  `scripts/run_model_01_sweep.py` (NOTES_WEEK3.md).
+- Where `MPSSurrogate` applies: χ ∈ {1,2,4,8}, 3 seeds where compute allows (see below —
+  model 3's larger parameter count required dropping to 2 seeds and χ∈{1,2,4}, decided
+  from a timing probe *before* running the real sweep, not from any chi\* result), from-
+  scratch training per χ, same loss/optimizer/epoch budget as the reference model — the
+  protocol tightened in `scripts/run_model_01_sweep.py` (NOTES_WEEK3.md).
+
+**Per-model protocol deviations (recorded here as they happen, before seeing results):**
+- **Model 3**: timed at ~2.7s/epoch for a 4-wire, 3-unitary (18-param) version — the
+  originally-drafted 6-wire version timed at ~6.9s/epoch, which would have put the full
+  3-seed × 3-χ × 80-epoch run at over an hour. Scaled the circuit down to 4 wires (doesn't
+  change the chain topology or the χ\*≈2 prediction being tested) and to 2 seeds / 50
+  epochs, keeping runtime to roughly 8-10 minutes. This is a compute-driven adjustment made
+  from a timing probe, before running the actual sweep against real data.
 
 ## Known compute constraint (LIMITATIONS.md) affecting this battery's size
 
