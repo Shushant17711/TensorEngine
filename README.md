@@ -23,8 +23,11 @@
   battery (they were pilot models used to build the matching layer, not blind picks).
   All 4 now implemented and topology-traced (structural predictions confirmed *before* any
   training, per the preregistration's own discipline):
-  - **model_03** (Huggins et al. 2019 MPS-circuit variant) — confirmed linear chain.
-    Sweep running to test the self-referential χ\*≈2 prediction; result pending.
+  - **model_03** (Huggins et al. 2019 MPS-circuit variant) — confirmed linear chain,
+    dequantizes, but at **χ\*=1**, not the predicted χ\*≈2 — diagnosed, not just reported:
+    the synthetic task wasn't entanglement-sensitive enough, so this became a genuine
+    methodological finding (χ\* is task-dependent, not purely a circuit property) rather
+    than a clean confirmation. See its `sweep_results.md` and NOTES_WEEK4.md.
   - **model_04** (Huggins et al. 2019 tree-circuit variant) — confirmed tree (TTN), "not
     applicable", same paper as model_03 for a clean within-paper MPS-vs-tree comparison.
   - **model_05** (Schuld et al. 2020, via `qml.StronglyEntanglingLayers`) — confirmed
@@ -32,10 +35,11 @@
     traced.
   - **model_06** (Havlicek et al. 2019 ZZ feature map) — confirmed genuinely tangled
     (all 6 pairs among 4 wires), matching the original prediction exactly.
-- **Not yet done**: model_03's numeric sweep result, models 5/6's numeric sweeps (both
-  expected to hit `NotImplementedError`, which is itself the recorded outcome — no
-  training possible for them with the current MPS-only matching layer), H2/H3
-  experiments, paper write-up.
+- **Battery status**: all 4 preregistered models have a final recorded outcome — see
+  [`results/chi_star_table.md`](results/chi_star_table.md) for the consolidated table.
+- **Not yet done**: H2 (needs more data points than this small battery gives), H3
+  (trainability/memory comparison), a `TreeSurrogate` for the tree-shaped models, a
+  general non-local surrogate for the tangled ones, paper write-up.
 
 ## 1. Honest framing, up front
 

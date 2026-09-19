@@ -49,9 +49,29 @@ plainly in the eventual paper rather than treating a battery skewed toward "not 
 as a shortcoming of this session's model choices — see PREREGISTRATION.md's outcome
 predictions, made before any of this was known, which correctly anticipated most of it.
 
-## What's still open
+## Update: model_03's sweep finished, and the result overturned a prediction — usefully
 
-- model_03's actual χ sweep result (running as this note is written).
+χ\*=1, not the predicted χ\*≈2 (see `targets/model_03_mps_classifier/sweep_results.md`
+for the full diagnosis). Root cause, confirmed by checking: the synthetic classification
+task used for model_03 (linear-threshold-style, unlike model_01's parity task) doesn't
+actually require the circuit's entanglement to solve — a chi=1 (product-state) surrogate
+can already reach the reference accuracy via a "mean-field" (best-rank-1-approximation)
+effect that still carries some signal from upstream qubits even without preserving real
+correlations. Parity (model_01) provably can't be solved this way (chi=1 measured exactly
+chance, 0.5), which is why model_01's χ\*=2 is a cleaner, more structurally meaningful
+number than model_03's χ\*=1 turned out to be.
+
+**The methodological lesson generalizes beyond model_03**: χ\* as measured by task
+accuracy conflates two different things — the ansatz's own structural bond dimension, and
+how much correlation the *task* actually demands. Getting an honest, structurally
+meaningful χ\* requires a task known (or checkable) to need genuine multi-qubit
+correlation, not just any plausible-looking synthetic label. This is worth stating
+explicitly in `PREREGISTRATION.md`-style protocol notes for any future battery expansion,
+and is arguably a more interesting, generalizable finding than a clean chi*≈2 confirmation
+would have been — exactly the kind of thing spec §1 means by treating every legitimate
+outcome (including a falsified prediction, diagnosed rather than buried) as reportable.
+
+## What's still open
 - The general non-local surrogate (SWAP network) that would let models 5/6 produce a real
   H1 accuracy comparison instead of stopping at "not applicable" — flagged in
   `targets/model_06_zz_feature_map/sweep_results.md` as plausibly a genuine H1 "not
