@@ -58,6 +58,32 @@ instead of an artifact of how a circuit's wires happened to be labeled by whoeve
   degree-3 "star" circuit confirmed to be correctly rejected rather than silently
   mishandled.
 
+## Follow-up: distinguishing rings from genuinely-tangled circuits
+
+Rechecking against a real PennyLane template (`qml.BasicEntanglerLayers`, whose default
+entangler is a *ring* of CNOTs — `(0,1),(1,2),(2,3),(3,0)` — not a chain) showed the
+degree/cycle check needed one more distinction. A ring has degree exactly 2 everywhere
+(so it isn't the "genuinely tangled" degree-≥3 case) but does contain one cycle, so it
+still isn't path-decomposable as originally defined. Rather than lump it in with the harder
+case, `parser.py` now classifies it separately (`CircuitTopology.ring_wraparound_edges`):
+cutting any one edge of a ring turns it into a path, so a ring is "one unavoidable
+long-range edge away" from fully local — much closer to representable than a true
+degree-≥3 tangle, and worth reporting as such since ring/periodic-boundary entanglers are
+extremely common in real published ansätze (this is exactly the sort of thing the Week 3
+audit battery would otherwise hit immediately and uninformatively). `MPSSurrogate` still
+refuses to build a surrogate for rings (no SWAP-network support yet), but now says exactly
+which single edge is the problem instead of a generic "not path-decomposable" message.
+
+Also fixed while testing this: `parser.parse_qnode` previously only ever saw whatever
+literal gates were queued, so a circuit built from a PennyLane template (e.g.
+`qml.BasicEntanglerLayers`, `qml.StronglyEntanglingLayers`) would show up as one giant
+opaque templated operation with no wires-pairs information at all. `parse_qnode` now runs
+`qml.transforms.decompose(tape, stopping_condition=lambda op: len(op.wires) <= 2)` first,
+so the entanglement graph reflects the actual gates being applied regardless of whether
+the circuit was hand-written gate-by-gate or built from a template — this matters a lot
+once real target models (built from templates, as most published ansätze are) enter the
+audit battery.
+
 ## Revised scope statement (supersedes NOTES_WEEK1.md's tentative one)
 
 The ordering/matching layer is not a minor addendum for a rare edge case — it is required

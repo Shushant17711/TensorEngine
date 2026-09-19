@@ -66,15 +66,26 @@ class MPSSurrogate:
         self.topology: CircuitTopology = parse_qnode(probe_qnode, *example_args, **example_kwargs)
 
         if not self.topology.is_1d_local:
+            if self.topology.ring_wraparound_edges:
+                raise NotImplementedError(
+                    "MPSSurrogate currently only supports path-decomposable circuits. "
+                    f"This circuit has {len(self.topology.ring_wraparound_edges)} ring "
+                    f"component(s) (wraparound edges {self.topology.ring_wraparound_edges}) "
+                    "-- every edge but one per ring can be made adjacent by reordering, but "
+                    "the wraparound edge remains genuinely long-range. A common real-world "
+                    "case (e.g. qml.BasicEntanglerLayers' default entangler) -- see "
+                    "dequant_engine.parser.FAILURE_MODES item 1a. A general non-local "
+                    "surrogate (explicit mid-circuit SWAP network) is not yet implemented."
+                )
             raise NotImplementedError(
                 "MPSSurrogate currently only supports circuits parser.parse_qnode judges "
                 "path-decomposable (some wire relabeling makes every entangling gate act "
                 "on adjacent wires). This circuit's entanglement graph is not a disjoint "
-                "union of simple paths (a wire touched by 3+ distinct entangling partners, "
-                "or an entangling cycle) -- best-effort achievable span under the greedy "
-                f"ordering is {self.topology.achievable_span}. A general non-local "
-                "surrogate (explicit mid-circuit SWAP network) is not yet implemented -- "
-                "see dequant_engine.parser.FAILURE_MODES."
+                "union of simple paths (a wire touched by 3+ distinct entangling partners) "
+                f"-- best-effort achievable span under the greedy ordering is "
+                f"{self.topology.achievable_span}. A general non-local surrogate (explicit "
+                "mid-circuit SWAP network) is not yet implemented -- see "
+                "dequant_engine.parser.FAILURE_MODES."
             )
 
         # Apply the proposed relabeling generically -- see module docstring for why this

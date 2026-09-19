@@ -43,13 +43,21 @@ Known failure cases of the qubit-ordering layer used here (documented per spec s
 4.1's explicit instruction to record ordering-heuristic failure cases):
 
 1. A wire touched by entangling gates with 3+ distinct partner wires (degree >= 3 in the
-   entanglement graph), or an entangling cycle (e.g. a ring of CNOTs closing back on
-   itself), has NO linear ordering that keeps every entangling pair adjacent -- this is an
-   exact structural fact (a graph with max degree <= 2 and no cycles is precisely a
-   disjoint union of paths; anything else provably is not path-decomposable), not a
-   heuristic failure. These circuits genuinely need a SWAP network mid-circuit to become
-   MPS-local, which this module does not construct -- MPSSurrogate raises
-   NotImplementedError for them rather than silently reporting an inflated chi*.
+   entanglement graph) has NO linear ordering that keeps every entangling pair adjacent --
+   an exact structural fact (a graph with max degree <= 2 is precisely a disjoint union of
+   paths and simple cycles; a degree-3+ node rules that out entirely), not a heuristic
+   failure. These circuits genuinely need a SWAP network mid-circuit to become MPS-local,
+   which this module does not construct -- MPSSurrogate raises NotImplementedError for
+   them rather than silently reporting an inflated chi*.
+1a. A *ring* component (every wire in it has degree exactly 2, forming one simple cycle --
+    e.g. ``qml.BasicEntanglerLayers``'s default entangler, a very common real ansatz
+    pattern) is a special, less-severe case: cutting any ONE edge turns it into a path, so
+    every edge but that one can be made adjacent by reordering. This module detects rings
+    separately (``CircuitTopology.ring_wraparound_edges``) and still refuses to build a
+    surrogate for them (a single unavoidable long-range edge remains, needing either extra
+    bond dimension across the whole chain or a real SWAP), but reports this distinctly from
+    the harder degree->=3 case since it is much closer to representable, and points at
+    exactly which single edge is the problem.
 2. Circuits whose entanglement pattern changes across layers in a way that would need a
    *different* wire order per layer (e.g. layer 1 entangles (0,1),(2,3); layer 2 entangles
    (1,2),(3,0)) are only checked against ONE static global ordering here -- the combined
@@ -79,6 +87,7 @@ class CircuitTopology:
     needs_reordering: bool  # True iff wire_order differs from the natural 0..n-1 order
     max_entangling_span: int  # span under the circuit's own (natural) wire order
     achievable_span: int  # span under wire_order -- <=1 iff is_1d_local
+    ring_wraparound_edges: list[tuple[int, int]] = field(default_factory=list)
     ordering_note: str = field(default="")
 
     def summary(self) -> str:
@@ -86,6 +95,12 @@ class CircuitTopology:
             locality = "already 1D-local under the natural wire order"
         elif self.is_1d_local:
             locality = f"path-decomposable after reordering to {self.wire_order}"
+        elif self.ring_wraparound_edges:
+            locality = (
+                f"{len(self.ring_wraparound_edges)} ring component(s) found "
+                f"(wraparound edges {self.ring_wraparound_edges}) -- one unavoidable "
+                "long-range edge per ring, see FAILURE_MODES item 1a"
+            )
         else:
             locality = (
                 f"NOT path-decomposable (best-effort span {self.achievable_span}) "
@@ -115,11 +130,21 @@ def _extract_entangling_pairs(tape) -> list[tuple[int, int]]:
     return pairs
 
 
-def _is_path_decomposable(pairs: list[tuple[int, int]]) -> bool:
-    """Exact check: is the entanglement graph a disjoint union of simple paths?
+def _classify_topology(pairs: list[tuple[int, int]]) -> tuple[bool, list[tuple[int, int]]]:
+    """Exact classification of the entanglement graph.
 
-    Equivalent to "every node has degree <= 2, and there are no cycles" -- exactly the
-    condition under which some linear wire ordering makes every entangling edge span 1.
+    Returns ``(degree_ok, ring_wraparound_edges)``:
+
+    - ``degree_ok=False`` means some wire has 3+ distinct entangling partners -- no
+      relabeling can help (FAILURE_MODES item 1); the ring analysis doesn't apply.
+    - ``degree_ok=True`` and ``ring_wraparound_edges`` empty: the graph is a disjoint
+      union of simple paths -- fully path-decomposable, every edge can be made adjacent.
+    - ``degree_ok=True`` and ``ring_wraparound_edges`` non-empty: every node has degree
+      <= 2 but one or more connected components is a simple cycle rather than a path (a
+      "ring" -- e.g. ``qml.BasicEntanglerLayers``'s default entangler). Each such
+      component contributes exactly one edge here: the one that, if removed, would turn
+      that cycle into a path (found as the edge that would close a union-find cycle).
+      FAILURE_MODES item 1a.
     """
     unique_edges = set(pairs)
     degree: dict[int, int] = {}
@@ -127,7 +152,7 @@ def _is_path_decomposable(pairs: list[tuple[int, int]]) -> bool:
         degree[a] = degree.get(a, 0) + 1
         degree[b] = degree.get(b, 0) + 1
     if any(d > 2 for d in degree.values()):
-        return False
+        return False, []
 
     parent: dict[int, int] = {}
 
@@ -139,15 +164,17 @@ def _is_path_decomposable(pairs: list[tuple[int, int]]) -> bool:
             parent[x], x = root, parent.get(x, x)
         return root
 
+    ring_edges: list[tuple[int, int]] = []
     for a, b in unique_edges:
         parent.setdefault(a, a)
         parent.setdefault(b, b)
         ra, rb = find(a), find(b)
         if ra == rb:
-            return False  # closing this edge would create a cycle
-        parent[ra] = rb
+            ring_edges.append((a, b))  # this edge closes a cycle -- the wraparound edge
+        else:
+            parent[ra] = rb
 
-    return True
+    return True, ring_edges
 
 
 def _greedy_chain_ordering(n_wires: int, pairs: list[tuple[int, int]]) -> list[int]:
@@ -207,6 +234,11 @@ def parse_qnode(qnode: qml.QNode, *example_args, **example_kwargs) -> CircuitTop
     matter, only which operations get queued.
     """
     tape = qml.workflow.construct_tape(qnode)(*example_args, **example_kwargs)
+    # Real ansatze are usually built from templates (e.g. qml.BasicEntanglerLayers,
+    # qml.StronglyEntanglingLayers) that queue as a single opaque operation rather than
+    # their constituent gates -- decompose down to <=2-qubit gates so the entanglement
+    # graph reflects what's actually applied, not the template's name.
+    (tape,), _ = qml.transforms.decompose(tape, stopping_condition=lambda op: len(op.wires) <= 2)
 
     n_wires = len(tape.wires)
     gate_names = [op.name for op in tape.operations]
@@ -216,7 +248,8 @@ def parse_qnode(qnode: qml.QNode, *example_args, **example_kwargs) -> CircuitTop
     natural_spans = [abs(b - a) for a, b in entangling_pairs]
     max_span = max(natural_spans, default=0)
 
-    path_decomposable = _is_path_decomposable(entangling_pairs)
+    degree_ok, ring_edges = _classify_topology(entangling_pairs)
+    path_decomposable = degree_ok and not ring_edges
     chain = _greedy_chain_ordering(n_wires, entangling_pairs)
     position = {wire: idx for idx, wire in enumerate(chain)}
     achievable_span = max((abs(position[a] - position[b]) for a, b in entangling_pairs), default=0)
@@ -228,8 +261,13 @@ def parse_qnode(qnode: qml.QNode, *example_args, **example_kwargs) -> CircuitTop
             if not needs_reordering
             else "path-decomposable; reordered via greedy nearest-neighbor-chain walk"
         )
+    elif degree_ok:
+        note = (
+            f"{len(ring_edges)} ring component(s) -- see FAILURE_MODES item 1a "
+            "(one unavoidable long-range edge per ring)"
+        )
     else:
-        note = "NOT path-decomposable -- needs a SWAP network, see FAILURE_MODES"
+        note = "NOT path-decomposable (degree >= 3 wire) -- needs a SWAP network, see FAILURE_MODES"
 
     return CircuitTopology(
         n_wires=n_wires,
@@ -241,5 +279,6 @@ def parse_qnode(qnode: qml.QNode, *example_args, **example_kwargs) -> CircuitTop
         needs_reordering=needs_reordering,
         max_entangling_span=max_span,
         achievable_span=achievable_span,
+        ring_wraparound_edges=ring_edges,
         ordering_note=note,
     )

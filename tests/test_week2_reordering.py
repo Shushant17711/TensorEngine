@@ -92,6 +92,28 @@ def test_genuinely_nonlocal_circuit_is_rejected_not_silently_mishandled():
     dev = qml.device("default.qubit", wires=4)
     topology = parse_qnode(qml.QNode(star_circuit, dev), np.zeros(4))
     assert not topology.is_1d_local
+    assert not topology.ring_wraparound_edges  # this is the "harder" case, not a ring
 
     with pytest.raises(NotImplementedError, match="path-decomposable"):
         MPSSurrogate(star_circuit, 4, 2, np.zeros(4))
+
+
+def ring_entangler_circuit(weights):
+    """qml.BasicEntanglerLayers' default entangler pattern: a ring of CNOTs
+    (0,1),(1,2),(2,3),(3,0) -- degree exactly 2 everywhere, but one cycle, not a path.
+    A very common real ansatz choice (hardware-efficient / periodic-boundary designs).
+    """
+    qml.BasicEntanglerLayers(weights, wires=range(4))
+    return qml.expval(qml.PauliZ(0))
+
+
+def test_ring_topology_is_distinguished_from_the_harder_nonlocal_case():
+    dev = qml.device("default.qubit", wires=4)
+    weights = np.zeros((2, 4))
+    topology = parse_qnode(qml.QNode(ring_entangler_circuit, dev), weights)
+
+    assert not topology.is_1d_local
+    assert len(topology.ring_wraparound_edges) == 1  # one ring -> exactly one bad edge
+
+    with pytest.raises(NotImplementedError, match="ring component"):
+        MPSSurrogate(ring_entangler_circuit, 4, 2, weights)
