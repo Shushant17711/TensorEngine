@@ -79,6 +79,8 @@ def test_reordering_recovers_exact_result_at_low_chi_natural_order_does_not():
 def star_circuit(weights):
     """Wire 0 entangled with 3 distinct partners -> degree 3 -> not path-decomposable.
     No linear ordering can make all three CNOTs act on adjacent wires simultaneously.
+    Note: this graph (a "star") is nonetheless a TREE (acyclic) -- it lands in the same
+    is_tree bucket as the QCNN pooling case (model_02), not the harder cyclic case below.
     """
     for i in range(4):
         qml.RY(weights[i], wires=i)
@@ -88,14 +90,42 @@ def star_circuit(weights):
     return qml.expval(qml.PauliZ(1))
 
 
-def test_genuinely_nonlocal_circuit_is_rejected_not_silently_mishandled():
+def test_star_topology_is_a_tree_not_a_ring():
     dev = qml.device("default.qubit", wires=4)
     topology = parse_qnode(qml.QNode(star_circuit, dev), np.zeros(4))
     assert not topology.is_1d_local
-    assert not topology.ring_wraparound_edges  # this is the "harder" case, not a ring
+    assert not topology.ring_wraparound_edges
+    assert topology.is_tree  # acyclic despite degree 3 at the center
+
+    with pytest.raises(NotImplementedError, match="TREE"):
+        MPSSurrogate(star_circuit, 4, 2, np.zeros(4))
+
+
+def wheel_circuit(weights):
+    """A ring (0,1),(1,2),(2,3),(3,0) plus a chord (0,2): degree(0)=degree(2)=3 AND a
+    cycle present (e.g. 0-1-2-0) -- neither a path, nor a pure ring, nor a tree. This is
+    the genuinely "hardest" case: no single-edge cut recovers a path, and no relabeling
+    or ring-style analysis helps.
+    """
+    for i in range(4):
+        qml.RY(weights[i], wires=i)
+    qml.CNOT(wires=[0, 1])
+    qml.CNOT(wires=[1, 2])
+    qml.CNOT(wires=[2, 3])
+    qml.CNOT(wires=[3, 0])
+    qml.CNOT(wires=[0, 2])
+    return qml.expval(qml.PauliZ(1))
+
+
+def test_genuinely_nonlocal_circuit_is_rejected_not_silently_mishandled():
+    dev = qml.device("default.qubit", wires=4)
+    topology = parse_qnode(qml.QNode(wheel_circuit, dev), np.zeros(4))
+    assert not topology.is_1d_local
+    assert not topology.ring_wraparound_edges  # degree >=3 present, ring check doesn't fire
+    assert not topology.is_tree  # a cycle is present -- not acyclic
 
     with pytest.raises(NotImplementedError, match="path-decomposable"):
-        MPSSurrogate(star_circuit, 4, 2, np.zeros(4))
+        MPSSurrogate(wheel_circuit, 4, 2, np.zeros(4))
 
 
 def ring_entangler_circuit(weights):

@@ -15,8 +15,11 @@ uv sync --group dev
 echo "== Week 1 spike: default.tensor capability probe =="
 uv run python scripts/week1_spike.py
 
-echo "== E1 validation: chi*=2 recovery on toy circuit =="
+echo "== E1 validation + Week 2/3 matching-layer regression tests =="
 uv run pytest tests/ -v
+
+echo "== model_01_vqc_chain: first end-to-end audit-battery run =="
+uv run python scripts/run_model_01_sweep.py
 
 echo "== Lint =="
 uv run ruff check .

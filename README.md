@@ -7,6 +7,20 @@
 
 ---
 
+## 0. Current status (updated as work progresses)
+
+- **Week 1** — `default.tensor` capability check: done, [`NOTES_WEEK1.md`](NOTES_WEEK1.md).
+- **Week 2** — matching layer built and fixed (it was silently unused at first — a real
+  bug): done, [`NOTES_WEEK2.md`](NOTES_WEEK2.md). Exact graph-theoretic classification of
+  circuit topologies (path / ring / tree / genuinely tangled), each with its own handling.
+- **Week 3 (started early)** — first two target models: [`NOTES_WEEK3.md`](NOTES_WEEK3.md).
+  `targets/model_01_vqc_chain` runs end-to-end (**χ\* = 2**, see its `sweep_results.md`).
+  `targets/model_02_qcnn_pooling` is a confirmed, legitimate **"not applicable"** result —
+  QCNN pooling forms a tree-tensor-network, not an MPS, and the tool correctly says so
+  rather than forcing a bad fit.
+- **Not yet done**: the preregistered battery (`PREREGISTRATION.md` is still deliberately
+  empty), H2/H3 experiments, paper write-up.
+
 ## 1. Honest framing, up front
 
 This project makes **no claim that quantum models are fake or that dequantization "wins."**

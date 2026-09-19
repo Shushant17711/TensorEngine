@@ -77,15 +77,28 @@ class MPSSurrogate:
                     "dequant_engine.parser.FAILURE_MODES item 1a. A general non-local "
                     "surrogate (explicit mid-circuit SWAP network) is not yet implemented."
                 )
+            if self.topology.is_tree:
+                raise NotImplementedError(
+                    "MPSSurrogate builds an MPS (path-shaped) surrogate, but this "
+                    "circuit's entanglement graph is a TREE (e.g. QCNN-style "
+                    "convolution+pooling) -- confirmed structurally, not a parser gap: "
+                    "each pooling round's surviving wire accumulates one entangling "
+                    "partner per round, which is exactly a tree-tensor-network (TTN) "
+                    "shape, not an MPS one. Forcing this into a path encoding would need "
+                    "a bond dimension that scales with tree depth for no good reason -- "
+                    "the correct fix is a TreeSurrogate (parallel to this class, "
+                    "contracting a TTN), which is not yet implemented. See "
+                    "dequant_engine.parser module docstring, point 4."
+                )
             raise NotImplementedError(
                 "MPSSurrogate currently only supports circuits parser.parse_qnode judges "
                 "path-decomposable (some wire relabeling makes every entangling gate act "
                 "on adjacent wires). This circuit's entanglement graph is not a disjoint "
-                "union of simple paths (a wire touched by 3+ distinct entangling partners) "
-                f"-- best-effort achievable span under the greedy ordering is "
-                f"{self.topology.achievable_span}. A general non-local surrogate (explicit "
-                "mid-circuit SWAP network) is not yet implemented -- see "
-                "dequant_engine.parser.FAILURE_MODES."
+                "union of simple paths and not a tree either (a wire touched by 3+ "
+                "distinct entangling partners, with a cycle present) -- best-effort "
+                f"achievable span under the greedy ordering is {self.topology.achievable_span}. "
+                "A general non-local surrogate (explicit mid-circuit SWAP network) is not "
+                "yet implemented -- see dequant_engine.parser.FAILURE_MODES."
             )
 
         # Apply the proposed relabeling generically -- see module docstring for why this

@@ -25,7 +25,17 @@ This module:
 4. When the graph is *not* path-decomposable (a wire touched by >=3 entangling gates to
    distinct partners, or a cycle), no relabeling can make every gate local -- an explicit
    SWAP network embedded in the circuit itself would be needed, which this module does not
-   construct (see ``FAILURE_MODES``).
+   construct (see ``FAILURE_MODES``). One especially notable sub-case: when the graph has a
+   degree->=3 node but is still acyclic (a tree), this is flagged separately
+   (``CircuitTopology.is_tree``) -- confirmed empirically on a QCNN-style
+   convolution+pooling circuit (Cong-Choi-Lukin, 8 wires -> 1 via 3 pooling rounds): its
+   entanglement graph is *exactly* a tree (8 nodes, 7 edges, connected, acyclic), because
+   each pooling round's "surviving" wire accumulates one entangling partner per round it
+   participates in. This is not a parser limitation to fix -- it's the well-known fact that
+   QCNNs are naturally tree tensor networks (TTNs), not matrix product states, so an
+   MPS-only matching layer *should* refuse them rather than force a bad-fit path encoding.
+   A future ``TreeSurrogate`` (parallel to ``MPSSurrogate``, contracting a TTN instead of
+   an MPS) is the correct extension for this case -- out of scope this session.
 
 What this module does *not* do: build the tensors itself. That's ``default.tensor``'s job
 for any circuit this module judges path-decomposable; ``mps_surrogate.py`` applies the
@@ -88,6 +98,7 @@ class CircuitTopology:
     max_entangling_span: int  # span under the circuit's own (natural) wire order
     achievable_span: int  # span under wire_order -- <=1 iff is_1d_local
     ring_wraparound_edges: list[tuple[int, int]] = field(default_factory=list)
+    is_tree: bool = False  # acyclic but degree >= 3 somewhere -- a TTN, not an MPS, shape
     ordering_note: str = field(default="")
 
     def summary(self) -> str:
@@ -100,6 +111,12 @@ class CircuitTopology:
                 f"{len(self.ring_wraparound_edges)} ring component(s) found "
                 f"(wraparound edges {self.ring_wraparound_edges}) -- one unavoidable "
                 "long-range edge per ring, see FAILURE_MODES item 1a"
+            )
+        elif self.is_tree:
+            locality = (
+                "entanglement graph is a TREE, not a path (this is a tree-tensor-network "
+                "shape, e.g. QCNN pooling -- MPS is the wrong ansatz family for it, see "
+                "the module docstring point 4, not a parser bug)"
             )
         else:
             locality = (
@@ -177,6 +194,32 @@ def _classify_topology(pairs: list[tuple[int, int]]) -> tuple[bool, list[tuple[i
     return True, ring_edges
 
 
+def _is_forest(pairs: list[tuple[int, int]]) -> bool:
+    """Is the entanglement graph acyclic, regardless of degree? A degree->=3 node that is
+    still acyclic means the graph is a tree -- structurally a tree tensor network, not
+    representable (well) as a path/MPS, but also not the "genuinely tangled" dense case.
+    """
+    unique_edges = set(pairs)
+    parent: dict[int, int] = {}
+
+    def find(x: int) -> int:
+        root = x
+        while parent.get(root, root) != root:
+            root = parent[root]
+        while parent.get(x, x) != root:
+            parent[x], x = root, parent.get(x, x)
+        return root
+
+    for a, b in unique_edges:
+        parent.setdefault(a, a)
+        parent.setdefault(b, b)
+        ra, rb = find(a), find(b)
+        if ra == rb:
+            return False
+        parent[ra] = rb
+    return True
+
+
 def _greedy_chain_ordering(n_wires: int, pairs: list[tuple[int, int]]) -> list[int]:
     """Greedy nearest-neighbor-chain heuristic: repeatedly attach the unplaced wire with
     the most entangling edges to already-placed wires, at whichever end of the chain
@@ -250,6 +293,7 @@ def parse_qnode(qnode: qml.QNode, *example_args, **example_kwargs) -> CircuitTop
 
     degree_ok, ring_edges = _classify_topology(entangling_pairs)
     path_decomposable = degree_ok and not ring_edges
+    is_tree = (not degree_ok) and _is_forest(entangling_pairs)
     chain = _greedy_chain_ordering(n_wires, entangling_pairs)
     position = {wire: idx for idx, wire in enumerate(chain)}
     achievable_span = max((abs(position[a] - position[b]) for a, b in entangling_pairs), default=0)
@@ -266,8 +310,10 @@ def parse_qnode(qnode: qml.QNode, *example_args, **example_kwargs) -> CircuitTop
             f"{len(ring_edges)} ring component(s) -- see FAILURE_MODES item 1a "
             "(one unavoidable long-range edge per ring)"
         )
+    elif is_tree:
+        note = "entanglement graph is a tree (TTN shape, e.g. QCNN pooling), not a path"
     else:
-        note = "NOT path-decomposable (degree >= 3 wire) -- needs a SWAP network, see FAILURE_MODES"
+        note = "NOT path-decomposable (degree >= 3 wire, with a cycle) -- needs a SWAP network"
 
     return CircuitTopology(
         n_wires=n_wires,
@@ -280,5 +326,6 @@ def parse_qnode(qnode: qml.QNode, *example_args, **example_kwargs) -> CircuitTop
         max_entangling_span=max_span,
         achievable_span=achievable_span,
         ring_wraparound_edges=ring_edges,
+        is_tree=is_tree,
         ordering_note=note,
     )

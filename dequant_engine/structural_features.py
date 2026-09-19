@@ -33,5 +33,7 @@ def extract_features(topology: CircuitTopology) -> dict[str, float]:
         "achievable_span": float(topology.achievable_span),
         "is_1d_local": float(topology.is_1d_local),
         "needs_reordering": float(topology.needs_reordering),
+        "is_ring": float(bool(topology.ring_wraparound_edges)),
+        "is_tree": float(topology.is_tree),
         "entangling_density": n_entangling / max(topology.n_wires, 1),
     }
