@@ -2,12 +2,12 @@
 
 Reference (default.qubit) accuracy: **1.000** (final training loss 0.0000, lr=0.2, epochs=100)
 
-chi sweep (fine-tuned 30 epochs from the reference weights, same loss/optimizer):
+chi sweep, 3 seeds ([0, 1, 2]), from-scratch training per chi (same loss/optimizer/epoch budget as the reference model):
 
-| chi | accuracy |
-|---|---|
-| 1 | 0.500 |
-| 2 | 1.000 |
-| 4 | 1.000 |
+| chi | mean accuracy | range |
+|---|---|---|
+| 1 | 0.500 | 0.500–0.500 |
+| 2 | 1.000 | 1.000–1.000 |
+| 4 | 1.000 | 1.000–1.000 |
 
-**chi\* = 2** (dequantized)
+**chi* per seed: [2, 2, 2] (3/3 seeds dequantized within the range tried)**

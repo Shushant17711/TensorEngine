@@ -18,7 +18,7 @@ uv run python scripts/week1_spike.py
 echo "== E1 validation + Week 2/3 matching-layer regression tests =="
 uv run pytest tests/ -v
 
-echo "== model_01_vqc_chain: first end-to-end audit-battery run =="
+echo "== model_01_vqc_chain: first end-to-end audit-battery run (~13 min: 3 seeds x 3 chi, parameter-shift training) =="
 uv run python scripts/run_model_01_sweep.py
 
 echo "== Lint =="

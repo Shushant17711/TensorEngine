@@ -59,6 +59,9 @@ def train_reference_model(x: torch.Tensor, y: torch.Tensor, *, lr: float, epochs
     }
 
 
+SEEDS = (0, 1, 2)  # spec section 5/E2: report chi* with a multi-seed confidence interval
+
+
 def main() -> None:
     x_np, y_np = make_parity_dataset(n_samples=16, n_bits=N_WIRES, seed=0)
     x = torch.tensor(x_np)
@@ -68,10 +71,6 @@ def main() -> None:
     ref = train_reference_model(x, y, lr=lr, epochs=epochs)
     print(f"Reference (default.qubit) accuracy after training: {ref['accuracy']:.3f}")
     print(f"Final training loss: {ref['loss_history'][-1]:.4f}")
-
-    weights_init = ref["weights"].clone()  # start surrogates from the trained reference
-    # point -- reasonable for this small-scale check; a from-scratch comparison (fresh
-    # random init per chi) is the more rigorous E2 protocol and is Week 3+ follow-up.
 
     def make_loss_fn(surrogate: MPSSurrogate):
         def loss_fn(weights):
@@ -84,37 +83,56 @@ def main() -> None:
         preds = torch.stack([surrogate(trained_weights, xi) for xi in x])
         return accuracy(preds, y)
 
-    result = sweep_bond_dimension(
-        vqc_circuit,
-        N_WIRES,
-        weights_init,
-        make_loss_fn,
-        metric_fn,
-        reference_metric=ref["accuracy"],
-        chi_values=[1, 2, 4],
-        tolerance=0.01,
-        lr=lr,
-        epochs=30,  # fine-tune from the reference point rather than retrain from scratch
-        example_args=(weights_init, x_np[0]),
-    )
+    # From-scratch training per chi, same epoch budget as the reference model, across
+    # multiple seeds -- the E2 protocol (spec section 5), tightening the earlier
+    # fine-tune-from-the-reference-point shortcut noted in NOTES_WEEK3.md.
+    chi_values = [1, 2, 4]
+    per_seed_results = []
+    for seed in SEEDS:
+        torch.manual_seed(seed)
+        weights_init = torch.empty((N_LAYERS, N_WIRES))
+        torch.nn.init.uniform_(weights_init, 0, 2 * torch.pi)
 
-    print(result.summary())
+        result = sweep_bond_dimension(
+            vqc_circuit,
+            N_WIRES,
+            weights_init,
+            make_loss_fn,
+            metric_fn,
+            reference_metric=ref["accuracy"],
+            chi_values=chi_values,
+            tolerance=0.01,
+            lr=lr,
+            epochs=epochs,
+            example_args=(weights_init, x_np[0]),
+        )
+        per_seed_results.append(result)
+        print(f"seed={seed}: {result.summary()}")
+
+    chi_stars = [r.chi_star for r in per_seed_results if r.chi_star is not None]
+    accuracy_by_chi = {chi: [r.metric_at_chi[chi] for r in per_seed_results] for chi in chi_values}
 
     out_path = (
         Path(__file__).resolve().parent.parent / "targets/model_01_vqc_chain/sweep_results.md"
+    )
+    rows = "\n".join(
+        f"| {chi} | {sum(vals) / len(vals):.3f} | {min(vals):.3f}–{max(vals):.3f} |"
+        for chi, vals in accuracy_by_chi.items()
+    )
+    chi_star_summary = (
+        f"chi* per seed: {[r.chi_star for r in per_seed_results]} "
+        f"({len(chi_stars)}/{len(SEEDS)} seeds dequantized within the range tried)"
     )
     out_path.write_text(
         "# model_01_vqc_chain — sweep results\n\n"
         f"Reference (default.qubit) accuracy: **{ref['accuracy']:.3f}** "
         f"(final training loss {ref['loss_history'][-1]:.4f}, lr={lr}, epochs={epochs})\n\n"
-        "chi sweep (fine-tuned 30 epochs from the reference weights, same loss/optimizer):\n\n"
-        "| chi | accuracy |\n|---|---|\n"
-        + "\n".join(f"| {chi} | {result.metric_at_chi[chi]:.3f} |" for chi in result.chi_values)
-        + f"\n\n**chi\\* = {result.chi_star}** "
-        + ("(dequantized)" if result.dequantized else "(NOT dequantized within range tried)")
-        + "\n"
+        f"chi sweep, {len(SEEDS)} seeds ({list(SEEDS)}), from-scratch training per chi "
+        "(same loss/optimizer/epoch budget as the reference model):\n\n"
+        "| chi | mean accuracy | range |\n|---|---|---|\n" + rows + f"\n\n**{chi_star_summary}**\n"
     )
-    print(f"\nWrote {out_path}")
+    print(f"\n{chi_star_summary}")
+    print(f"Wrote {out_path}")
 
 
 if __name__ == "__main__":
