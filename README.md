@@ -18,8 +18,13 @@
   `targets/model_02_qcnn_pooling` is a confirmed, legitimate **"not applicable"** result —
   QCNN pooling forms a tree-tensor-network, not an MPS, and the tool correctly says so
   rather than forcing a bad fit.
-- **Not yet done**: the preregistered battery (`PREREGISTRATION.md` is still deliberately
-  empty), H2/H3 experiments, paper write-up.
+- **Preregistration committed** — [`PREREGISTRATION.md`](PREREGISTRATION.md): 4 new models
+  (Grant et al.'s MPS and tree classifier variants, Schuld et al.'s circuit-centric
+  classifier, Havlicek et al.'s ZZ feature map), each with a stated outcome prediction,
+  none run yet. Explicitly excludes model_01/02 from the "real" battery (they were pilot
+  models used to build the matching layer, not blind picks).
+- **Not yet done**: actually running the preregistered battery, H2/H3 experiments, paper
+  write-up.
 
 ## 1. Honest framing, up front
 
