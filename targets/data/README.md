@@ -23,3 +23,18 @@ with 100% accuracy by a single feature, which would silently reintroduce the sam
 original synthetic task). The paper itself does full ternary classification; this repo
 does the harder binary sub-problem as a first, honest step — see each model's
 `original_reported.md` for what would be needed to close that remaining gap.
+
+## `breast_cancer.csv`
+
+Fetched 2026-09-19 from
+`https://raw.githubusercontent.com/scikit-learn/scikit-learn/main/sklearn/datasets/data/breast_cancer.csv`
+(scikit-learn's own bundled copy of the Wisconsin Diagnostic Breast Cancer dataset). 569
+samples, 30 features, binary label (0=malignant, 1=benign).
+
+Used for `targets/model_02_qcnn_pooling` and `targets/model_04_ttn_classifier` (both
+8-wire tree circuits) — Iris only has 4 features, and inventing a synthetic 8-feature task
+would repeat the exact mistake NOTES_WEEK5.md corrected for model_03. `breast_cancer_loader.py`
+selects the first 8 of the dataset's 10 "mean"-measurement columns (mean radius, texture,
+perimeter, area, smoothness, compactness, concavity, concave points) — the leading,
+commonly-cited subset of this well-known dataset's 30 features, chosen for being a natural,
+non-arbitrary subset, not by trying options and keeping whichever gave a nicer result.

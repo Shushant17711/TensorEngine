@@ -25,6 +25,26 @@ and so on to one root. This matches exactly how ``targets/model_02_qcnn_pooling`
 ``targets/model_04_ttn_classifier`` are built. General tree-topology inference from an
 arbitrary ``CircuitTopology`` (reconstructing an unknown hierarchy from a flat edge list)
 is NOT implemented -- out of scope this session, flagged as a further extension.
+
+**Important limitation, found while running this against real models (NOTES_WEEK6.md) --
+this is NOT a gate-structure-matched surrogate the way ``MPSSurrogate`` is.**
+``MPSSurrogate`` re-executes the *exact same* QNode function (same gates, same trained
+angles) on a bond-dimension-bounded device -- its chi* genuinely reflects that specific
+circuit's own entanglement. ``TreeSurrogate`` instead builds a generic, from-scratch
+classical tree classifier that shares only the *topology* (leaf count, tree shape) and the
+same leaf-level feature encoding, trained directly against data labels -- it has no
+dependence on the reference circuit's specific gates or trained weights at all. In
+practice this means two structurally-different quantum circuits (e.g. model_02's QCNN vs
+model_04's TTN classifier) trained on the *same data* will always get IDENTICAL
+``TreeSurrogate`` sweep numbers, since nothing about the reference circuit's own design
+ever enters the surrogate's training -- confirmed directly (both models' sweep_results.md
+tables are numerically identical). The chi* reported here should be read as "the bond
+dimension a generic tree-shaped classical model needs to match [some tree-shaped quantum
+circuit]'s accuracy on this task," not "the bond dimension *this specific circuit's own
+gate structure* requires" -- a real, weaker claim than ``MPSSurrogate`` supports, and a
+gap a future version should close (e.g. by initializing/constraining each node's map from
+the corresponding quantum gate's own unitary, the way ``MPSSurrogate`` does implicitly by
+re-running the literal gates).
 """
 
 from __future__ import annotations

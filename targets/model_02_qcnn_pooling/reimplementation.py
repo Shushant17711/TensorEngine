@@ -22,6 +22,7 @@ excluding it from the MPS-only battery with this result recorded as the reason.
 
 from __future__ import annotations
 
+import numpy as np
 import pennylane as qml
 
 N_WIRES = 8
@@ -41,8 +42,12 @@ def conv_pool_round(active_wires: list[int], weights) -> list[int]:
     return [target for _, target in pairs]
 
 
-def qcnn_circuit(weights):
-    """``weights`` is a flat 1D array; sliced per round below.
+def qcnn_circuit(weights, x=None):
+    """``weights`` is a flat 1D array; sliced per round below. ``x`` (optional):
+    length-N_WIRES feature vector, angle-encoded before the trainable rotations (added
+    when this model moved from a structural-only trace to an actual data-driven
+    reproduction -- see NOTES_WEEK6.md; the original version folded "encoding" and
+    "trainable weight" into the same RY, which had no real data input at all).
 
     Round 1: 8 wires -> 4 active (4 CRZ gates)
     Round 2: 4 wires -> 2 active (2 CRZ gates)
@@ -51,6 +56,9 @@ def qcnn_circuit(weights):
     """
     active = list(range(N_WIRES))
     idx = 0
+    if x is not None:
+        for w in active:
+            qml.RY(np.pi / 2 * x[w], wires=w)
     for w in active:
         qml.RY(weights[idx], wires=w)
         idx += 1

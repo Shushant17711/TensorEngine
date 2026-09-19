@@ -15,9 +15,8 @@
   circuit topologies (path / ring / tree / genuinely tangled), each with its own handling.
 - **Week 3 (started early)** — first two target models: [`NOTES_WEEK3.md`](NOTES_WEEK3.md).
   `targets/model_01_vqc_chain` runs end-to-end (**χ\* = 2**, see its `sweep_results.md`).
-  `targets/model_02_qcnn_pooling` is a confirmed, legitimate **"not applicable"** result —
-  QCNN pooling forms a tree-tensor-network, not an MPS, and the tool correctly says so
-  rather than forcing a bad fit.
+  `targets/model_02_qcnn_pooling`'s entanglement graph is confirmed a tree-tensor-network,
+  not an MPS — originally "not applicable," later upgraded to a real result (Week 6, below).
 - **Preregistration committed** — [`PREREGISTRATION.md`](PREREGISTRATION.md): 4 new models,
   each with a stated outcome prediction. Explicitly excludes model_01/02 from the "real"
   battery (they were pilot models used to build the matching layer, not blind picks).
@@ -30,24 +29,37 @@
     honestly: Iris at this scale doesn't need this circuit's entanglement to match its own
     accuracy — a genuine instance of this project's own central thesis (§1), not a null
     result. See its `sweep_results.md`, NOTES_WEEK4.md, and NOTES_WEEK5.md.
-  - **model_04** (Huggins et al. 2019 tree-circuit variant) — confirmed tree (TTN), "not
-    applicable", same paper as model_03 for a clean within-paper MPS-vs-tree comparison.
+  - **model_04** (Huggins et al. 2019 tree-circuit variant) — confirmed tree (TTN), same
+    paper as model_03 for a clean within-paper MPS-vs-tree comparison. Originally "not
+    applicable", later upgraded to a real result (Week 6, below).
   - **model_05** (Schuld et al. 2020, via `qml.StronglyEntanglingLayers`) — confirmed
     genuinely tangled; prediction revised from "uncertain" to "expected to resist" once
     traced.
   - **model_06** (Havlicek et al. 2019 ZZ feature map) — confirmed genuinely tangled
     (all 6 pairs among 4 wires), matching the original prediction exactly.
-- **Battery status**: all 4 preregistered models have a final recorded outcome — see
-  [`results/chi_star_table.md`](results/chi_star_table.md) for the consolidated table.
 - **Two real `default.tensor` bugs found and filed upstream** (not just documented
   locally): [PennyLaneAI/pennylane#10169](https://github.com/PennyLaneAI/pennylane/issues/10169)
   (wire-order silently ignored) and
   [PennyLaneAI/pennylane#10170](https://github.com/PennyLaneAI/pennylane/issues/10170)
   (batched call silently returns a wrong-shaped result) — see `upstream_reports/` for the
   standalone, independently-verified repro scripts.
-- **Not yet done**: H2 (needs more data points than this small battery gives), H3
-  (trainability/memory comparison), a `TreeSurrogate` for the tree-shaped models, a
-  general non-local surrogate for the tangled ones, paper write-up.
+- **Week 6** — [`NOTES_WEEK6.md`](NOTES_WEEK6.md): built `TreeSurrogate` (a genuine
+  bond-dimension-bounded classical tree tensor network, in plain torch), validated with
+  E1-equivalent rigor, and ran it against real data (Wisconsin Breast Cancer, 8 features)
+  for models 02/04 — both dequantize at **χ\*=2** (3/3 seeds), upgrading two former "not
+  applicable" results into real numbers. **Important caveat, documented prominently, not
+  buried**: `TreeSurrogate` is not gate-structure-matched the way `MPSSurrogate` is (it's
+  a generic tree-shaped classifier trained on data labels, sharing only the topology with
+  each reference circuit) — both models' full sweep tables are numerically identical as a
+  direct consequence. Also found and fixed two real bugs while doing this: a weight-shape
+  mismatch crash, and a symmetric-tolerance flaw in `sweep_bond_dimension`'s "dequantized"
+  check that wrongly failed to credit a surrogate for exceeding an undertrained reference.
+- **Battery status**: all 6 models now have a real, numeric, or definitively-structural
+  final outcome — see [`results/chi_star_table.md`](results/chi_star_table.md). Only
+  models 5/6 (genuinely tangled) remain without any surrogate family available.
+- **Not yet done**: H2 (needs more, and more independent, data points than this battery
+  gives), H3 (trainability/memory comparison), a general non-local surrogate for the
+  tangled models, a gate-structure-matched `TreeSurrogate`, paper write-up.
 
 ## 1. Honest framing, up front
 

@@ -84,7 +84,12 @@ def sweep_bond_dimension(
         metric_at_chi[chi] = metric
         loss_histories[chi] = fit_result["loss_history"]
 
-        if chi_star is None and abs(metric - reference_metric) <= tolerance:
+        # One-sided: "caught up" means matching OR EXCEEDING the reference, within a
+        # small allowed shortfall below it -- not a symmetric closeness band. Found via
+        # a real case (NOTES_WEEK6.md): an undertrained reference model can score lower
+        # than a well-optimized surrogate, and a surrogate that's *better* than the
+        # reference has obviously already dequantized it, not failed to match it.
+        if chi_star is None and metric >= reference_metric - tolerance:
             chi_star = chi
 
     return SweepResult(

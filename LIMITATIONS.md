@@ -2,6 +2,17 @@
 
 Living document — updated as real limitations are found, not written speculatively.
 
+## Fixed: `sweep_bond_dimension`'s "dequantized" check was a symmetric closeness band
+
+Found (and fixed) in Week 6 (NOTES_WEEK6.md) while running `TreeSurrogate` against
+model_02: `abs(metric - reference_metric) <= tolerance` wrongly fails to credit a
+surrogate that *exceeds* an imperfectly-trained reference model's accuracy. Now one-sided:
+`metric >= reference_metric - tolerance`. Fixed in both `dequant_engine/sweep.py` and
+`scripts/run_tree_models_sweep.py`; checked it doesn't change any previously-reported
+chi\* (models 1 and 3 both hit the maximum possible accuracy, 1.0, where the two
+definitions coincide). Kept here rather than deleted once fixed, per this file's own
+"living document" convention of recording what was actually found.
+
 ## `default.tensor` cannot differentiate a `qml.state()` return (any diff_method)
 
 Confirmed empirically while writing `tests/test_e1_toy_circuit.py` (2026-09-19):
@@ -73,19 +84,26 @@ buckets rather than one blanket rejection, each needing a different future exten
 2. **Tree** (acyclic, some degree ≥ 3) — e.g. QCNN convolution+pooling (confirmed
    empirically on `targets/model_02_qcnn_pooling`, see NOTES_WEEK3.md), and even a plain
    "star" entangler. This is structurally a tree-tensor-network (TTN) shape, not an MPS
-   one — `MPSSurrogate` correctly refuses rather than forcing a bad-fit path encoding. The
-   right fix is a **`TreeSurrogate`** class (parallel to `MPSSurrogate`, contracting a TTN
-   via `quimb`'s tree-tensor support instead of an MPS) — not yet implemented; a natural
-   Week 4+ addition once the audit battery includes more QCNN-family models.
+   one — `MPSSurrogate` correctly refuses rather than forcing a bad-fit path encoding.
+   **Implemented (Week 6, NOTES_WEEK6.md): `dequant_engine/tree_surrogate.py`** — built
+   directly in torch rather than through `quimb`/`default.tensor` (checked and confirmed
+   `default.tensor`'s `method="tn"` has no bond-dimension truncation knob to build on, see
+   below). Validated the way E1 validates `MPSSurrogate`, and run against models 2/4 on
+   real data (chi\*=2 both). **Important caveat, found immediately after getting that
+   result and documented prominently, not buried**: unlike `MPSSurrogate`,
+   `TreeSurrogate` is *not gate-structure-matched* — it's a generic tree-shaped classical
+   classifier trained on data labels, sharing only the topology with the reference
+   circuit, not its specific gates. Two different circuits trained on the same data get
+   numerically identical `TreeSurrogate` results (confirmed: models 2 and 4's sweep
+   tables are identical). A properly gate-matched version (each node's map initialized
+   from/constrained by the actual quantum gate at that tree position) remains open.
    **Checked (2026-09-19) and worth recording so nobody re-checks it expecting a
    shortcut**: `default.tensor` also has a `method="tn"` (general Tensor Network) mode
    alongside `"mps"`, which sounded like it might give a TTN surrogate for free. It does
    not — `"tn"` is for *exact* large-scale simulation via a smart contraction ordering
    (`quimb`/`cotengra`), with no `max_bond_dim`-equivalent truncation knob (that kwarg is
-   documented as MPS-method-specific). A real `TreeSurrogate` needs bond-dimension-bounded
-   TTN contraction, which means building it directly against `quimb`'s tree-tensor-network
-   API rather than through `default.tensor`'s device abstraction — a bigger lift than
-   `MPSSurrogate` was, not a thin wrapper.
+   documented as MPS-method-specific), which is why `TreeSurrogate` was built independently
+   in plain torch instead.
 3. **Genuinely tangled** (a cycle present AND degree ≥ 3 somewhere) — no relabeling or
    single-edge-cut analysis helps; would need an explicit mid-circuit SWAP network.
    Confirmed distinct from cases 1/2 with a dedicated test (a 4-cycle plus one chord,
