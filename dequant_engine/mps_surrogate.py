@@ -1,15 +1,22 @@
 """Torch-trainable MPS surrogate for a PennyLane QNode (spec section 4.1/4.2).
 
-Per the Week 1 finding (NOTES_WEEK1.md): for circuits ``parser.parse_qnode`` judges
-1D-local, ``default.tensor`` at a bounded ``max_bond_dim`` already *is* the matched
-classical surrogate -- we just re-run the exact same quantum function on that device with
-the torch interface and parameter-shift gradients, so training is byte-for-byte the same
-protocol (same loss, optimizer, schedule) as whatever trained the original quantum model.
+Per NOTES_WEEK1.md + NOTES_WEEK2.md: for circuits ``parser.parse_qnode`` judges
+path-decomposable (a linear wire order exists that makes every entangling gate act on
+adjacent wires), ``default.tensor`` at a bounded ``max_bond_dim`` already *is* the matched
+classical surrogate. The relabeling ``parser`` proposes is applied with ``qml.map_wires``
+before construction -- this is not cosmetic: ``default.tensor``'s bond truncation is keyed
+to numeric wire-label order regardless of what order is passed to the device's ``wires=``
+argument (confirmed empirically, see parser.py's module docstring), so skipping this step
+for a circuit that needs reordering would silently report an inflated, unfair chi*.
+Training is byte-for-byte the same protocol (same loss, optimizer, schedule) as whatever
+trained the original quantum model -- only the wire *labels* differ, never the gate
+sequence or parameter structure.
 
-For circuits the parser flags as non-local, this class raises ``NotImplementedError`` with
-a message pointing at ``parser.FAILURE_MODES`` -- building an explicit quimb MPS with SWAP
-networks for arbitrary entanglement graphs is out of scope for this session (see the repo's
-plan / timeline: that's later-week work once real target models surface the actual need).
+For circuits the parser flags as genuinely non-path-decomposable (a wire entangled with 3+
+distinct partners, or an entangling cycle), this class raises ``NotImplementedError`` with
+a message pointing at ``parser.FAILURE_MODES`` -- building an explicit mid-circuit SWAP
+network is out of scope for this session (see the repo's plan / timeline: that's later-week
+work once a real target model surfaces the actual need).
 """
 
 from __future__ import annotations
@@ -61,20 +68,27 @@ class MPSSurrogate:
         if not self.topology.is_1d_local:
             raise NotImplementedError(
                 "MPSSurrogate currently only supports circuits parser.parse_qnode judges "
-                "1D-local (default.tensor's native ordering handles those directly, per "
-                "NOTES_WEEK1.md). This circuit has entangling gates spanning up to "
-                f"{self.topology.max_entangling_span} wires under the natural ordering. "
-                "A general non-local surrogate (explicit quimb MPS + SWAP network under "
-                "the proposed reorder) is not yet implemented -- see "
-                "dequant_engine.parser.FAILURE_MODES and the proposed ordering at "
-                f"{self.topology.wire_order}."
+                "path-decomposable (some wire relabeling makes every entangling gate act "
+                "on adjacent wires). This circuit's entanglement graph is not a disjoint "
+                "union of simple paths (a wire touched by 3+ distinct entangling partners, "
+                "or an entangling cycle) -- best-effort achievable span under the greedy "
+                f"ordering is {self.topology.achievable_span}. A general non-local "
+                "surrogate (explicit mid-circuit SWAP network) is not yet implemented -- "
+                "see dequant_engine.parser.FAILURE_MODES."
             )
+
+        # Apply the proposed relabeling generically -- see module docstring for why this
+        # is required for correctness of the reported chi*, not just an optimization.
+        wire_map = {logical: position for position, logical in enumerate(self.topology.wire_order)}
+        mapped_qfunc = qml.map_wires(qfunc, wire_map) if self.topology.needs_reordering else qfunc
 
         device_kwargs = {"method": "mps", "max_bond_dim": chi}
         if cutoff is not None:
             device_kwargs["cutoff"] = cutoff
         self.device = qml.device("default.tensor", wires=n_wires, **device_kwargs)
-        self.qnode = qml.QNode(qfunc, self.device, interface="torch", diff_method=diff_method)
+        self.qnode = qml.QNode(
+            mapped_qfunc, self.device, interface="torch", diff_method=diff_method
+        )
 
     def __call__(self, *args, **kwargs):
         return self.qnode(*args, **kwargs)

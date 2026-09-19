@@ -15,6 +15,14 @@ from dequant_engine.parser import CircuitTopology
 def extract_features(topology: CircuitTopology) -> dict[str, float]:
     """Candidate structural features for the H2 regression (entangling-gate count, span,
     connectivity). Not yet validated against any real chi* data -- see module docstring.
+
+    ``achievable_span`` (post-reordering) is included alongside ``max_entangling_span``
+    (natural-order) deliberately: per NOTES_WEEK2.md, the *natural* span is often just an
+    artifact of how the circuit happened to be written, while ``achievable_span`` reflects
+    the entanglement graph's actual topology (0/1 for any path-decomposable circuit,
+    regardless of how "spread out" its wire labels look) -- degree/cycle structure, not
+    raw span, is what should end up correlating with chi* once real (circuit, chi*) pairs
+    exist to check this against.
     """
     n_entangling = len(topology.entangling_pairs)
     return {
@@ -22,6 +30,8 @@ def extract_features(topology: CircuitTopology) -> dict[str, float]:
         "n_entangling_gates": float(n_entangling),
         "n_params": float(topology.n_params),
         "max_entangling_span": float(topology.max_entangling_span),
+        "achievable_span": float(topology.achievable_span),
         "is_1d_local": float(topology.is_1d_local),
+        "needs_reordering": float(topology.needs_reordering),
         "entangling_density": n_entangling / max(topology.n_wires, 1),
     }

@@ -1,20 +1,35 @@
 """QNode -> gate sequence -> MPS topology (spec section 4.1, "the matching layer").
 
-Per the Week 1 finding (see NOTES_WEEK1.md), ``default.tensor`` already contracts an MPS
-for us given a device and a qubit *ordering*; what it does not give us is the ordering
-itself for circuits that aren't already laid out 1D-local. This module's job is:
+Week 2 finding (supersedes the tentative Week 1 note that this layer might be nearly
+redundant with ``default.tensor`` -- see NOTES_WEEK2.md): ``default.tensor`` does **not**
+auto-optimize qubit ordering. Its physical MPS chain order is fixed by numeric wire-label
+order (wire 0 next to wire 1 next to wire 2, ...), regardless of what order you pass as the
+device's ``wires=`` argument. Confirmed empirically: an 8-qubit circuit entangling pairs
+(0,7),(1,6),(2,5),(3,4) needs bond dimension >= 8 for exact results under the natural
+label order, but is *exactly* reproduced at bond dimension 2 once the wires are relabeled
+(via ``qml.map_wires``) so each entangled pair is adjacent in label order. So this module's
+ordering heuristic is not a nice-to-have for the rare all-to-all case -- it directly
+determines whether a reported chi* is a fair measurement of the circuit's actual
+entanglement structure, or an artifact of an unlucky natural wire order.
 
-1. Pull the operation sequence out of an arbitrary QNode (gates, wires, param structure).
-2. Classify how "MPS-friendly" that sequence already is: entangling gates only between
-   wires the circuit already treats as neighbors ("local") vs. entangling gates between
-   distant wires ("non-local" / all-to-all).
-3. For the non-local case, propose a canonical qubit ordering that minimizes how far
-   entangled pairs are pushed apart -- the "ordering heuristic" the spec explicitly asks to
-   be documented, failure cases included (see ``FAILURE_MODES`` below).
+This module:
+
+1. Pulls the operation sequence out of an arbitrary QNode (gates, wires, param structure).
+2. Builds the entanglement graph (which wire pairs are ever jointly acted on by a
+   multi-qubit gate).
+3. Checks whether that graph is *path-decomposable* -- i.e. every wire has degree <= 2 and
+   there are no cycles, which is exactly the condition under which SOME linear wire
+   ordering makes every entangling gate act on physically adjacent wires (a chain, or a
+   disjoint union of chains covering separate wire groups). When true, a relabeling alone
+   (no mid-circuit SWAP gates) is sufficient -- this is what ``mps_surrogate.py`` acts on.
+4. When the graph is *not* path-decomposable (a wire touched by >=3 entangling gates to
+   distinct partners, or a cycle), no relabeling can make every gate local -- an explicit
+   SWAP network embedded in the circuit itself would be needed, which this module does not
+   construct (see ``FAILURE_MODES``).
 
 What this module does *not* do: build the tensors itself. That's ``default.tensor``'s job
-(see NOTES_WEEK1.md) for circuits this module judges local-enough; ``mps_surrogate.py``
-decides which path to take based on the ``CircuitTopology`` this module produces.
+for any circuit this module judges path-decomposable; ``mps_surrogate.py`` applies the
+relabeling this module proposes and lets the device do the actual MPS contraction.
 """
 
 from __future__ import annotations
@@ -24,20 +39,28 @@ from dataclasses import dataclass, field
 import pennylane as qml
 
 FAILURE_MODES = """
-Known failure cases of the qubit-reordering heuristic used here (documented per spec
-section 4.1's explicit instruction to record ordering-heuristic failure cases):
+Known failure cases of the qubit-ordering layer used here (documented per spec section
+4.1's explicit instruction to record ordering-heuristic failure cases):
 
-1. Dense all-to-all entanglement (e.g. a fully-connected entangling layer on N wires) has
-   no linear ordering that keeps every entangling pair adjacent -- the heuristic minimizes
-   *total* span, not worst-case span, so some pairs will still be pushed far apart and
-   truncation error at fixed chi will be systematically underestimated for those pairs.
-2. Circuits whose entanglement pattern changes across layers (e.g. layer 1 entangles
-   (0,1),(2,3); layer 2 entangles (1,2),(3,0)) are optimized for a *single* static ordering
-   here -- there is no support yet for a per-layer reordering (which would require SWAP
-   networks / bond permutations that this module does not construct).
-3. The heuristic is a greedy nearest-neighbor-chain construction (see
-   ``_greedy_chain_ordering``), not an exact minimum linear arrangement -- it can be
-   suboptimal versus an exact solver (which is NP-hard in general) for large wire counts.
+1. A wire touched by entangling gates with 3+ distinct partner wires (degree >= 3 in the
+   entanglement graph), or an entangling cycle (e.g. a ring of CNOTs closing back on
+   itself), has NO linear ordering that keeps every entangling pair adjacent -- this is an
+   exact structural fact (a graph with max degree <= 2 and no cycles is precisely a
+   disjoint union of paths; anything else provably is not path-decomposable), not a
+   heuristic failure. These circuits genuinely need a SWAP network mid-circuit to become
+   MPS-local, which this module does not construct -- MPSSurrogate raises
+   NotImplementedError for them rather than silently reporting an inflated chi*.
+2. Circuits whose entanglement pattern changes across layers in a way that would need a
+   *different* wire order per layer (e.g. layer 1 entangles (0,1),(2,3); layer 2 entangles
+   (1,2),(3,0)) are only checked against ONE static global ordering here -- the combined
+   entanglement graph across all layers is what gets tested, so a circuit that is
+   layer-by-layer path-decomposable but not path-decomposable in aggregate is (correctly,
+   if conservatively) rejected rather than handled with per-layer relabeling.
+3. Where the graph IS path-decomposable, the specific chain found is produced by a greedy
+   nearest-neighbor-chain walk (see ``_greedy_chain_ordering``) rather than an exhaustive
+   search -- for a true disjoint-union-of-paths graph this always recovers a fully valid
+   ordering (there's no ambiguity to get wrong: each node has at most 2 neighbors), but it
+   has not been checked against every conceivable disconnected-component arrangement.
 """
 
 
@@ -48,22 +71,26 @@ class CircuitTopology:
     """
 
     n_wires: int
-    wire_order: list[int]
+    wire_order: list[int]  # chain[position] = logical wire placed there
     gate_names: list[str]
     entangling_pairs: list[tuple[int, int]]
     n_params: int
-    is_1d_local: bool
-    max_entangling_span: int
+    is_1d_local: bool  # True iff SOME relabeling makes every entangling pair adjacent
+    needs_reordering: bool  # True iff wire_order differs from the natural 0..n-1 order
+    max_entangling_span: int  # span under the circuit's own (natural) wire order
+    achievable_span: int  # span under wire_order -- <=1 iff is_1d_local
     ordering_note: str = field(default="")
 
     def summary(self) -> str:
-        locality = (
-            "1D-local (no reordering needed)"
-            if self.is_1d_local
-            else (
-                f"non-local (max span {self.max_entangling_span}); proposed order {self.wire_order}"
+        if self.is_1d_local and not self.needs_reordering:
+            locality = "already 1D-local under the natural wire order"
+        elif self.is_1d_local:
+            locality = f"path-decomposable after reordering to {self.wire_order}"
+        else:
+            locality = (
+                f"NOT path-decomposable (best-effort span {self.achievable_span}) "
+                "-- needs a SWAP network, see FAILURE_MODES"
             )
-        )
         return (
             f"CircuitTopology: {self.n_wires} wires, {len(self.gate_names)} gates, "
             f"{self.n_params} trainable params, {len(self.entangling_pairs)} entangling "
@@ -88,11 +115,49 @@ def _extract_entangling_pairs(tape) -> list[tuple[int, int]]:
     return pairs
 
 
+def _is_path_decomposable(pairs: list[tuple[int, int]]) -> bool:
+    """Exact check: is the entanglement graph a disjoint union of simple paths?
+
+    Equivalent to "every node has degree <= 2, and there are no cycles" -- exactly the
+    condition under which some linear wire ordering makes every entangling edge span 1.
+    """
+    unique_edges = set(pairs)
+    degree: dict[int, int] = {}
+    for a, b in unique_edges:
+        degree[a] = degree.get(a, 0) + 1
+        degree[b] = degree.get(b, 0) + 1
+    if any(d > 2 for d in degree.values()):
+        return False
+
+    parent: dict[int, int] = {}
+
+    def find(x: int) -> int:
+        root = x
+        while parent.get(root, root) != root:
+            root = parent[root]
+        while parent.get(x, x) != root:
+            parent[x], x = root, parent.get(x, x)
+        return root
+
+    for a, b in unique_edges:
+        parent.setdefault(a, a)
+        parent.setdefault(b, b)
+        ra, rb = find(a), find(b)
+        if ra == rb:
+            return False  # closing this edge would create a cycle
+        parent[ra] = rb
+
+    return True
+
+
 def _greedy_chain_ordering(n_wires: int, pairs: list[tuple[int, int]]) -> list[int]:
     """Greedy nearest-neighbor-chain heuristic: repeatedly attach the unplaced wire with
     the most entangling edges to already-placed wires, at whichever end of the chain
-    minimizes the new edge's span. Not optimal (linear arrangement is NP-hard in general)
-    -- see FAILURE_MODES item 3.
+    minimizes the new edge's span. When the entanglement graph is path-decomposable (see
+    ``_is_path_decomposable``), each node has at most 2 neighbors, so this walk has no
+    real ambiguity and recovers a fully valid ordering. For non-path-decomposable graphs
+    this is a best-effort heuristic only (see FAILURE_MODES item 3) -- its result is
+    informational, not something ``mps_surrogate.py`` acts on in that case.
     """
     if n_wires <= 1:
         return list(range(n_wires))
@@ -107,7 +172,6 @@ def _greedy_chain_ordering(n_wires: int, pairs: list[tuple[int, int]]) -> list[i
         neighbors[b][a] = neighbors[b].get(a, 0) + weight
 
     remaining = set(range(n_wires))
-    # Seed with the most-connected wire.
     start = max(remaining, key=lambda w: sum(neighbors[w].values()), default=0)
     chain = [start]
     remaining.remove(start)
@@ -121,7 +185,9 @@ def _greedy_chain_ordering(n_wires: int, pairs: list[tuple[int, int]]) -> list[i
                     best_wire, best_score, best_end = candidate, score, end_name
         if best_wire is None or best_score <= 0:
             # No remaining wire shares an edge with either chain end: attach an
-            # arbitrary leftover wire to keep the ordering total (isolated wire).
+            # arbitrary leftover wire to keep the ordering total (isolated wire, or a
+            # separate path component -- span across this junction doesn't matter since
+            # there's no entangling edge there).
             best_wire = next(iter(remaining))
             best_end = "right"
         if best_end == "left":
@@ -147,24 +213,33 @@ def parse_qnode(qnode: qml.QNode, *example_args, **example_kwargs) -> CircuitTop
     n_params = sum(op.num_params for op in tape.operations)
     entangling_pairs = _extract_entangling_pairs(tape)
 
-    spans = [abs(b - a) for a, b in entangling_pairs]
-    max_span = max(spans, default=0)
-    is_1d_local = max_span <= 1
+    natural_spans = [abs(b - a) for a, b in entangling_pairs]
+    max_span = max(natural_spans, default=0)
 
-    if is_1d_local:
-        wire_order = list(range(n_wires))
-        note = "already 1D-local under the natural wire order"
+    path_decomposable = _is_path_decomposable(entangling_pairs)
+    chain = _greedy_chain_ordering(n_wires, entangling_pairs)
+    position = {wire: idx for idx, wire in enumerate(chain)}
+    achievable_span = max((abs(position[a] - position[b]) for a, b in entangling_pairs), default=0)
+
+    needs_reordering = chain != list(range(n_wires))
+    if path_decomposable:
+        note = (
+            "already 1D-local under the natural wire order"
+            if not needs_reordering
+            else "path-decomposable; reordered via greedy nearest-neighbor-chain walk"
+        )
     else:
-        wire_order = _greedy_chain_ordering(n_wires, entangling_pairs)
-        note = "reordered via greedy nearest-neighbor-chain heuristic; see FAILURE_MODES"
+        note = "NOT path-decomposable -- needs a SWAP network, see FAILURE_MODES"
 
     return CircuitTopology(
         n_wires=n_wires,
-        wire_order=wire_order,
+        wire_order=chain,
         gate_names=gate_names,
         entangling_pairs=entangling_pairs,
         n_params=n_params,
-        is_1d_local=is_1d_local,
+        is_1d_local=path_decomposable,
+        needs_reordering=needs_reordering,
         max_entangling_span=max_span,
+        achievable_span=achievable_span,
         ordering_note=note,
     )

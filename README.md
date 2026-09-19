@@ -46,11 +46,21 @@ known, working technique.
 result as χ grows), and gradient-based training through it via `interface="torch"` +
 `diff_method="parameter-shift"` works cleanly, at roughly 0.14s/step for a 4-qubit/8-parameter
 circuit on CPU. **Conclusion: circuit-to-MPS simulation for locally-entangled circuits is not
-this project's contribution — `default.tensor` already does it.** This project's actual scope
-is:
+this project's contribution — `default.tensor` already does it.**
 
-- the **matching/ordering layer** for circuits that are *not* already 1D-local (canonical
-  qubit ordering for all-to-all entanglers — this is genuinely unsolved by the device itself),
+**Week 2 finding — see [`NOTES_WEEK2.md`](NOTES_WEEK2.md), this sharpened the scope further.**
+`default.tensor`'s bond truncation is keyed to numeric wire-label order and is *not*
+auto-optimized — an 8-qubit circuit entangling wire pairs `(0,7),(1,6),(2,5),(3,4)` needs
+χ≈8 for exact results under its natural wire order, but is exactly reproduced at χ=2 once
+the wires are relabeled (`qml.map_wires`) so each entangled pair is physically adjacent. So
+the ordering layer isn't a rare-case addendum — **without it, a reported χ\* is an artifact
+of how a circuit's author happened to number its wires, not a real measurement of its
+entanglement structure.** This project's actual scope is:
+
+- the **matching/ordering layer**: an exact graph check (is the entanglement graph a
+  disjoint union of simple paths — every wire degree ≤ 2, no cycles?) plus a `qml.map_wires`
+  relabeling when one exists, applied to *every* circuit, not just visibly-scrambled ones —
+  this is load-bearing for a fair χ\*, confirmed necessary even for "simple" circuits,
 - the **χ-sweep and χ\* extraction pipeline** (`default.tensor` gives you one χ at a time;
   nothing sweeps it and reports a threshold),
 - the **audit-battery + preregistration discipline** across published models,
