@@ -21,6 +21,35 @@ differentiate fine via parameter-shift (confirmed in `scripts/week1_spike.py`, s
 `test_sweep_recovers_chi_star_equal_2` by evaluating the (fixed, untrained) reference
 weights directly rather than training against a state-fidelity loss.
 
+## `default.tensor` does NOT support adjoint/backprop, and silently mishandles batched calls
+
+Confirmed empirically while investigating why `scripts/run_model_01_sweep.py` took ~13
+minutes for one small model (2026-09-19):
+
+- **No adjoint or backprop differentiation at all**, even for a plain `qml.expval`
+  return: both raise `"Device ... does not support {method} with requested circuit."`
+  `diff_method="best"` silently falls back to parameter-shift. This means every gradient
+  step costs 2 circuit evaluations *per trainable parameter* (parameter-shift's cost),
+  with no faster alternative available on this device today -- a real, load-bearing
+  compute constraint on how large a preregistered battery (spec §4.3, 6-10 models x 3
+  seeds x up to 7 chi values each) can practically be, not just an implementation detail.
+- **Passing a batch of data points to a single QNode call silently returns the wrong
+  shape instead of erroring or broadcasting correctly.** Tested directly: 5 data points
+  passed as `qn(weights, xs)` with `xs.shape == (5, 2)` returned a length-2 result that
+  didn't match any of the 5 per-sample values computed via a Python loop (`qn(weights,
+  xi)` for each `xi`) -- not a slow-but-correct broadcast, an outright wrong answer with
+  no error raised. **Do not attempt to vectorize `MPSSurrogate`/`sweep.py` calls over a
+  data batch dimension in a single QNode call on this device** -- the per-sample Python
+  loop used throughout this codebase is slower but is the only currently-verified-correct
+  approach. Revisit if a future PennyLane/quimb version documents real batching support
+  for `default.tensor`.
+
+**Practical effect on the timeline:** the ~13-minute run for one model (3 seeds x 3 chi
+values x 100 epochs x 16 samples, all serial parameter-shift) suggests the full
+preregistered battery (Week 5-6 on the original timeline) needs either a smaller battery,
+fewer seeds/chi values, fewer epochs, or accepting a multi-hour run -- a real planning
+input for Week 3's preregistration commit, not a hypothetical concern.
+
 ## `parser.py`'s qubit-reordering heuristic
 
 See `dequant_engine.parser.FAILURE_MODES` for the known failure cases of the matching
