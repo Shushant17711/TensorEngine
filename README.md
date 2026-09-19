@@ -24,10 +24,12 @@
   All 4 now implemented and topology-traced (structural predictions confirmed *before* any
   training, per the preregistration's own discipline):
   - **model_03** (Huggins et al. 2019 MPS-circuit variant) — confirmed linear chain,
-    dequantizes, but at **χ\*=1**, not the predicted χ\*≈2 — diagnosed, not just reported:
-    the synthetic task wasn't entanglement-sensitive enough, so this became a genuine
-    methodological finding (χ\* is task-dependent, not purely a circuit property) rather
-    than a clean confirmation. See its `sweep_results.md` and NOTES_WEEK4.md.
+    dequantizes at **χ\*=1**, not the predicted χ\*≈2. First measured against an invented
+    synthetic task (a real gap, caught under review — see NOTES_WEEK5.md) and re-run
+    against the real Iris dataset (versicolor vs virginica); the result held. Interpreted
+    honestly: Iris at this scale doesn't need this circuit's entanglement to match its own
+    accuracy — a genuine instance of this project's own central thesis (§1), not a null
+    result. See its `sweep_results.md`, NOTES_WEEK4.md, and NOTES_WEEK5.md.
   - **model_04** (Huggins et al. 2019 tree-circuit variant) — confirmed tree (TTN), "not
     applicable", same paper as model_03 for a clean within-paper MPS-vs-tree comparison.
   - **model_05** (Schuld et al. 2020, via `qml.StronglyEntanglingLayers`) — confirmed
@@ -37,6 +39,12 @@
     (all 6 pairs among 4 wires), matching the original prediction exactly.
 - **Battery status**: all 4 preregistered models have a final recorded outcome — see
   [`results/chi_star_table.md`](results/chi_star_table.md) for the consolidated table.
+- **Two real `default.tensor` bugs found and filed upstream** (not just documented
+  locally): [PennyLaneAI/pennylane#10169](https://github.com/PennyLaneAI/pennylane/issues/10169)
+  (wire-order silently ignored) and
+  [PennyLaneAI/pennylane#10170](https://github.com/PennyLaneAI/pennylane/issues/10170)
+  (batched call silently returns a wrong-shaped result) — see `upstream_reports/` for the
+  standalone, independently-verified repro scripts.
 - **Not yet done**: H2 (needs more data points than this small battery gives), H3
   (trainability/memory comparison), a `TreeSurrogate` for the tree-shaped models, a
   general non-local surrogate for the tangled ones, paper write-up.

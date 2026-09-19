@@ -13,13 +13,18 @@ that could drift out of sync.
 | [model_05_circuit_centric](../targets/model_05_circuit_centric/sweep_results.md) | Schuld et al. 2020, arXiv:1804.00633 | Genuinely tangled | Not applicable | — |
 | [model_06_zz_feature_map](../targets/model_06_zz_feature_map/sweep_results.md) | Havlicek et al. 2019, arXiv:1804.11326 | Genuinely tangled (all-to-all) | Not applicable | — |
 
-**Note on model_03's χ\*=1:** this was a surprise — predicted χ\*≈2 (the circuit's own
-bond dimension). Diagnosed, not just reported: the synthetic task used wasn't
-entanglement-sensitive enough (unlike model_01's parity task), so a product-state
-surrogate could already solve it via a "mean-field" approximation at each truncation step.
-**χ\* is task-dependent, not purely a property of the circuit** — see this model's own
-`sweep_results.md` for the full diagnosis and NOTES_WEEK4.md for the methodological
-takeaway. This is a real, reportable finding in its own right, not a failed check.
+**Note on model_03's χ\*=1:** predicted χ\*≈2 (the circuit's own bond dimension); not
+confirmed, on two separate attempts. First attempt (NOTES_WEEK4.md) used an *invented*
+synthetic task and was correctly flagged as not meaningful — an entanglement-insensitive
+made-up task tells you nothing about the circuit. Re-run (NOTES_WEEK5.md) against the
+paper's own actual benchmark (real Iris data, versicolor vs virginica, the class pair
+Schuld et al. 2020 — model_05's paper — is confirmed to use) still found χ\*=1. This time
+it's a real result: Iris classification at this scale genuinely doesn't require this
+circuit's entanglement to match its own reported accuracy — consistent with a known,
+published critique that small classical benchmarks like Iris are often too easy to
+demonstrate real quantum structure is doing anything, which is this project's own central
+thesis (README §1). **χ\* is task-dependent, not purely a property of the circuit** — the
+methodological lesson survived even after the underlying task got fixed.
 
 ## Reading this table
 

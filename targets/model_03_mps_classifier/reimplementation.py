@@ -15,6 +15,12 @@ entangler for convenience. That makes chi* here a self-referential check: since 
 circuit's own "bond line" carries a single qubit at a time (V=1 qubit of bond), any cut's
 Schmidt rank is at most 2^V = 2, so chi*=2 (not just "small") is a specific, falsifiable
 prediction (see PREREGISTRATION.md model 3).
+
+**Dataset note (see NOTES_WEEK5.md):** the first version of this reproduction (see git
+history) trained against an invented synthetic task, which was a real gap -- it meant the
+resulting chi* said nothing about this paper's actual classifier, only about an arbitrary
+task. Re-run against the real Iris dataset (`targets/data/iris_loader.py`,
+versicolor-vs-virginica) via `scripts/run_model_03_sweep.py`.
 """
 
 from __future__ import annotations

@@ -60,6 +60,14 @@ edited so the correction itself is auditable.
   change the chain topology or the χ\*≈2 prediction being tested) and to 2 seeds / 50
   epochs, keeping runtime to roughly 8-10 minutes. This is a compute-driven adjustment made
   from a timing probe, before running the actual sweep against real data.
+- **Model 3, correction (post-hoc, after the first result)**: the first sweep run against
+  this model used an *invented* synthetic dataset instead of a real one, breaking this
+  document's own stated protocol ("verify it reproduces ... the paper's own reported
+  accuracy on a small dataset"). Caught under direct scrutiny, not self-initiated — see
+  NOTES_WEEK5.md. Re-run against real Iris data (versicolor vs virginica, the class pair
+  model 5's paper — Schuld et al. 2020 — is confirmed to use). This is disclosed as a
+  correction to a completed result, not a pre-run adjustment like the others in this
+  section — flagged explicitly since it's a different, more serious kind of deviation.
 
 ## Known compute constraint (LIMITATIONS.md) affecting this battery's size
 

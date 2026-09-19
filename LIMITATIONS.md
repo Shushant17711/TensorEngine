@@ -23,6 +23,12 @@ weights directly rather than training against a state-fidelity loss.
 
 ## `default.tensor` does NOT support adjoint/backprop, and silently mishandles batched calls
 
+**Filed upstream:**
+[PennyLaneAI/pennylane#10169](https://github.com/PennyLaneAI/pennylane/issues/10169)
+(wire-order ignored) and
+[PennyLaneAI/pennylane#10170](https://github.com/PennyLaneAI/pennylane/issues/10170)
+(batched-call correctness bug) — full repro scripts in `upstream_reports/`.
+
 Confirmed empirically while investigating why `scripts/run_model_01_sweep.py` took ~13
 minutes for one small model (2026-09-19):
 
@@ -51,6 +57,11 @@ fewer seeds/chi values, fewer epochs, or accepting a multi-hour run -- a real pl
 input for Week 3's preregistration commit, not a hypothetical concern.
 
 ## `parser.py`'s qubit-reordering heuristic
+
+The reason this module's relabeling (via `qml.map_wires`) is necessary at all, rather
+than passing a reordered `wires=` list to the device, is itself a `default.tensor` bug —
+filed as [PennyLaneAI/pennylane#10169](https://github.com/PennyLaneAI/pennylane/issues/10169)
+(see NOTES_WEEK2.md for the original discovery).
 
 See `dequant_engine.parser.FAILURE_MODES` for the known failure cases of the matching
 layer. As of Week 3, non-path-decomposable circuits are classified into three distinct
