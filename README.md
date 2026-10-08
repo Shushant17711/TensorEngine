@@ -268,3 +268,7 @@ would need it. The quantum-model side follows the density-matrix (10–13 qubit)
 - PennyLane `default.tensor` device documentation — verify current capabilities before starting
 - Shin, Teo, Jeong, *Dequantizing quantum machine learning models using tensor networks*, Phys.
   Rev. Research 6, 023218 (2024)
+
+## License
+
+MIT. See [LICENSE](LICENSE).
